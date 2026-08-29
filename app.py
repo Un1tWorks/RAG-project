@@ -40,7 +40,9 @@ st.set_page_config(
 st.title("🏦 Raiffeisen Customer Support AI")
 st.caption("Ask any question regarding banking conditions, fees, and account policies.")
 
-@st.cache_resource(show_spinner="Initializing AI Engine and Vector DB...")
+from llama_index.core import SimpleDirectoryReader, StorageContext
+
+@st.cache_resource(show_spinner="Initializing AI Engine and processing PDFs...")
 def load_rag_engine():
     Settings.llm = Groq(model="llama-3.1-8b-instant", api_key=groq_api_key)
     Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
@@ -50,9 +52,18 @@ def load_rag_engine():
     chroma_collection = chroma_client.get_or_create_collection("raiffeisen_docs")
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     
-    index = VectorStoreIndex.from_vector_store(
-        vector_store, embed_model=Settings.embed_model
-    )
+    # Check if database is empty; if so, ingest PDF documents from ./data
+    if chroma_collection.count() == 0:
+        st.toast("Database empty! Ingesting PDFs from ./data...", icon="⏳")
+        documents = SimpleDirectoryReader("./data").load_data()
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        index = VectorStoreIndex.from_documents(
+            documents, storage_context=storage_context, embed_model=Settings.embed_model
+        )
+    else:
+        index = VectorStoreIndex.from_vector_store(
+            vector_store, embed_model=Settings.embed_model
+        )
     
     return index.as_query_engine(
         similarity_top_k=3,
