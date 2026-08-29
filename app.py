@@ -3,7 +3,7 @@ import sys
 import tempfile
 import nltk
 
-# Configure NLTK to use a writable temporary directory for Streamlit Cloud
+# Configure NLTK writable directory for Streamlit Cloud
 nltk_data_dir = os.path.join(tempfile.gettempdir(), "nltk_data")
 os.makedirs(nltk_data_dir, exist_ok=True)
 nltk.data.path.append(nltk_data_dir)
@@ -14,13 +14,13 @@ for resource in ["punkt", "punkt_tab", "stopwords"]:
     except Exception:
         pass
 
-# Prevent multithreading locks
+# Multithreading configuration
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
 
 import streamlit as st
 from dotenv import load_dotenv
-from llama_index.core import VectorStoreIndex, Settings
+from llama_index.core import VectorStoreIndex, Settings, SimpleDirectoryReader, StorageContext
 from llama_index.llms.groq import Groq
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import chromadb
@@ -28,7 +28,6 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 load_dotenv()
 
-# Support API key from Streamlit Cloud Secrets or local .env
 groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 
 st.set_page_config(
@@ -40,9 +39,7 @@ st.set_page_config(
 st.title("🏦 Raiffeisen Customer Support AI")
 st.caption("Ask any question regarding banking conditions, fees, and account policies.")
 
-from llama_index.core import SimpleDirectoryReader, StorageContext
-
-@st.cache_resource(show_spinner="Initializing AI Engine and processing PDFs...")
+@st.cache_resource(show_spinner="Initializing AI Engine and Vector Database...")
 def load_rag_engine():
     Settings.llm = Groq(model="llama-3.1-8b-instant", api_key=groq_api_key)
     Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
@@ -52,9 +49,8 @@ def load_rag_engine():
     chroma_collection = chroma_client.get_or_create_collection("raiffeisen_docs")
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     
-    # Check if database is empty; if so, ingest PDF documents from ./data
+    # Auto-ingest documents if vector collection is empty
     if chroma_collection.count() == 0:
-        st.toast("Database empty! Ingesting PDFs from ./data...", icon="⏳")
         documents = SimpleDirectoryReader("./data").load_data()
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
