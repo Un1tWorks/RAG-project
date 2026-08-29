@@ -41,8 +41,13 @@ st.caption("Ask any question regarding banking conditions, fees, and account pol
 
 @st.cache_resource(show_spinner="Initializing AI Engine and Vector Database...")
 def load_rag_engine():
-    Settings.llm = Groq(model="llama-3.1-8b-instant", api_key=groq_api_key)
-    Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    # Instantiate Groq LLM and HuggingFace Embeddings explicitly
+    llm = Groq(model="llama-3.1-8b-instant", api_key=groq_api_key)
+    embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    
+    # Set global defaults
+    Settings.llm = llm
+    Settings.embed_model = embed_model
     
     db_path = "./chroma_db"
     chroma_client = chromadb.PersistentClient(path=db_path)
@@ -54,14 +59,15 @@ def load_rag_engine():
         documents = SimpleDirectoryReader("./data").load_data()
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
-            documents, storage_context=storage_context, embed_model=Settings.embed_model
+            documents, storage_context=storage_context, embed_model=embed_model, llm=llm
         )
     else:
         index = VectorStoreIndex.from_vector_store(
-            vector_store, embed_model=Settings.embed_model
+            vector_store, embed_model=embed_model, llm=llm
         )
     
     return index.as_query_engine(
+        llm=llm,
         similarity_top_k=3,
         system_prompt=(
             "You are a helpful, polite customer service assistant for Raiffeisen Bank. "
