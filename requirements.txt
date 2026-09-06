@@ -1,5 +1,6 @@
 streamlit
 llama-index
+llama-index-llms-openai-like
 llama-index-llms-groq
 llama-index-embeddings-huggingface
 llama-index-vector-stores-chroma
@@ -7,6 +8,4 @@ llama-index-readers-file
 pymupdf
 chromadb
 python-dotenv
-ntlk
-llama-index-core
-llama-index-llms-openai-like
+nltk
