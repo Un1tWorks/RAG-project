@@ -46,7 +46,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 
 # 1. Initialize the correct LLM and Embedding Model
 global_llm = Groq(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     api_key=groq_api_key
 )
 global_embed = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
