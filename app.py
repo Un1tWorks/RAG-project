@@ -20,14 +20,10 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 import streamlit as st
 from dotenv import load_dotenv
-from llama_index.core import VectorStoreIndex, Settings, SimpleDirectoryReader, StorageContext, get_response_synthesizer
-from llama_index.llms.groq import Groq
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-import chromadb
-from llama_index.vector_stores.chroma import ChromaVectorStore
 
 load_dotenv()
 
+# Get key before importing LlamaIndex
 groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 
 st.set_page_config(
@@ -43,7 +39,14 @@ if not groq_api_key:
     st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
     st.stop()
 
-# 1. SET GLOBAL LLM & EMBEDDING AT MODULE LEVEL BEFORE ANY LLAMAINDEX CALLS
+# 1. IMPORT LLAMAINDEX AFTER KEY VERIFICATION
+from llama_index.core import VectorStoreIndex, Settings, SimpleDirectoryReader, StorageContext
+from llama_index.llms.groq import Groq
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+import chromadb
+from llama_index.vector_stores.chroma import ChromaVectorStore
+
+# 2. FORCE GLOBAL SETTINGS AT TOP LEVEL IMMEDIATELY AFTER IMPORTS
 global_llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
 global_embed = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
@@ -52,12 +55,15 @@ Settings.embed_model = global_embed
 
 @st.cache_resource(show_spinner="Initializing AI Engine and Vector Database...")
 def load_rag_engine():
+    # Force settings again inside function scope
+    Settings.llm = global_llm
+    Settings.embed_model = global_embed
+
     db_path = "./chroma_db"
     chroma_client = chromadb.PersistentClient(path=db_path)
     chroma_collection = chroma_client.get_or_create_collection("raiffeisen_docs")
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     
-    # Auto-ingest documents if vector collection is empty
     if chroma_collection.count() == 0:
         documents = SimpleDirectoryReader("./data").load_data()
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
@@ -73,17 +79,12 @@ def load_rag_engine():
             embed_model=global_embed,
             llm=global_llm
         )
-    
-    # 2. USE tree_summarize TO AVOID REFINE-PROGRAM OPENAI FALLBACKS
-    response_synthesizer = get_response_synthesizer(
-        llm=global_llm,
-        response_mode="tree_summarize"
-    )
 
+    # Simple query engine with explicitly bound Groq LLM
     return index.as_query_engine(
         llm=global_llm,
-        response_synthesizer=response_synthesizer,
-        similarity_top_k=3
+        similarity_top_k=3,
+        response_mode="compact"
     )
 
 query_engine = load_rag_engine()
