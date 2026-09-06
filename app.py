@@ -45,11 +45,11 @@ def load_rag_engine():
         st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
         st.stop()
 
-    # Use supported Groq model
+    # 1. Initialize Groq and Embeddings
     llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
     embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
     
-    # Set global LlamaIndex settings
+    # 2. MUST set global LlamaIndex settings BEFORE loading any storage
     Settings.llm = llm
     Settings.embed_model = embed_model
     
@@ -58,7 +58,7 @@ def load_rag_engine():
     chroma_collection = chroma_client.get_or_create_collection("raiffeisen_docs")
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     
-    # Auto-ingest documents if vector collection is empty
+    # 3. Auto-ingest documents if vector collection is empty
     if chroma_collection.count() == 0:
         documents = SimpleDirectoryReader("./data").load_data()
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
@@ -70,7 +70,7 @@ def load_rag_engine():
             vector_store, embed_model=embed_model, llm=llm
         )
     
-    # Create synthesizer explicitly to lock LLM to Groq
+    # 4. Explicitly bind Groq LLM to the response synthesizer
     response_synthesizer = get_response_synthesizer(
         llm=llm,
         response_mode="compact"
@@ -79,14 +79,8 @@ def load_rag_engine():
     return index.as_query_engine(
         llm=llm,
         response_synthesizer=response_synthesizer,
-        similarity_top_k=3,
-        system_prompt=(
-            "You are a helpful, polite customer service assistant for Raiffeisen Bank. "
-            "Answer the customer's question clearly and concisely based ONLY on the provided context. "
-            "If the answer is not in the documents, state that you do not have that detail."
-        )
+        similarity_top_k=3
     )
-
 query_engine = load_rag_engine()
 
 if "messages" not in st.session_state:
