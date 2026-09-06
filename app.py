@@ -43,7 +43,7 @@ if not groq_api_key:
     st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
     st.stop()
 
-# FORCE GLOBAL LLM SETTINGS BEFORE ANY INDEX CREATION
+# 1. SET GLOBAL LLM & EMBEDDING AT MODULE LEVEL BEFORE ANY LLAMAINDEX CALLS
 global_llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
 global_embed = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
@@ -62,18 +62,22 @@ def load_rag_engine():
         documents = SimpleDirectoryReader("./data").load_data()
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
-            documents, storage_context=storage_context
+            documents, 
+            storage_context=storage_context,
+            embed_model=global_embed,
+            llm=global_llm
         )
     else:
         index = VectorStoreIndex.from_vector_store(
-            vector_store
+            vector_store,
+            embed_model=global_embed,
+            llm=global_llm
         )
     
-    # Use tree_summarize or compact without structured answer filtering
+    # 2. USE tree_summarize TO AVOID REFINE-PROGRAM OPENAI FALLBACKS
     response_synthesizer = get_response_synthesizer(
         llm=global_llm,
-        response_mode="compact",
-        structured_answer_filtering=False
+        response_mode="tree_summarize"
     )
 
     return index.as_query_engine(
