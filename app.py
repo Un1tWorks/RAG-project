@@ -39,45 +39,43 @@ st.set_page_config(
 st.title("🏦 Raiffeisen Customer Support AI")
 st.caption("Ask any question regarding banking conditions, fees, and account policies.")
 
+if not groq_api_key:
+    st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
+    st.stop()
+
+# FORCE GLOBAL LLM SETTINGS AT MODULE LEVEL TO PREVENT OPENAI FALLBACK
+global_llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
+global_embed = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+
+Settings.llm = global_llm
+Settings.embed_model = global_embed
+
 @st.cache_resource(show_spinner="Initializing AI Engine and Vector Database...")
 def load_rag_engine():
-    if not groq_api_key:
-        st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
-        st.stop()
-
-    # 1. Initialize Groq and Embeddings
-    llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
-    embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-    
-    # 2. MUST set global LlamaIndex settings BEFORE loading any storage
-    Settings.llm = llm
-    Settings.embed_model = embed_model
-    
     db_path = "./chroma_db"
     chroma_client = chromadb.PersistentClient(path=db_path)
     chroma_collection = chroma_client.get_or_create_collection("raiffeisen_docs")
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     
-    # 3. Auto-ingest documents if vector collection is empty
+    # Auto-ingest documents if vector collection is empty
     if chroma_collection.count() == 0:
         documents = SimpleDirectoryReader("./data").load_data()
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
-            documents, storage_context=storage_context, embed_model=embed_model, llm=llm
+            documents, storage_context=storage_context
         )
     else:
         index = VectorStoreIndex.from_vector_store(
-            vector_store, embed_model=embed_model, llm=llm
+            vector_store
         )
     
-    # 4. Explicitly pass Groq LLM to synthesizer
     response_synthesizer = get_response_synthesizer(
-        llm=llm,
+        llm=global_llm,
         response_mode="compact"
     )
 
     return index.as_query_engine(
-        llm=llm,
+        llm=global_llm,
         response_synthesizer=response_synthesizer,
         similarity_top_k=3
     )
