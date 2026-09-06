@@ -7,3 +7,6 @@ llama-index-readers-file
 pymupdf
 chromadb
 python-dotenv
+ntlk
+llama-index-core
+llama-index-llms-openai-like

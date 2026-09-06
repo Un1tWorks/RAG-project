@@ -23,7 +23,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Get key before importing LlamaIndex
 groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 
 st.set_page_config(
@@ -39,15 +38,19 @@ if not groq_api_key:
     st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
     st.stop()
 
-# 1. IMPORT LLAMAINDEX AFTER KEY VERIFICATION
 from llama_index.core import VectorStoreIndex, Settings, SimpleDirectoryReader, StorageContext
-from llama_index.llms.groq import Groq
+from llama_index.llms.openai_like import OpenAILike
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import chromadb
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-# 2. FORCE GLOBAL SETTINGS AT TOP LEVEL IMMEDIATELY AFTER IMPORTS
-global_llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
+# EXPLICITLY DEFINE GROQ ENDPOINT AND MODEL VIA OPENAI-LIKE CONNECTOR
+global_llm = OpenAILike(
+    model="llama-3.3-70b-versatile",
+    api_base="https://api.groq.com/openai/v1",
+    api_key=groq_api_key,
+    is_chat_model=True
+)
 global_embed = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
 Settings.llm = global_llm
@@ -55,10 +58,6 @@ Settings.embed_model = global_embed
 
 @st.cache_resource(show_spinner="Initializing AI Engine and Vector Database...")
 def load_rag_engine():
-    # Force settings again inside function scope
-    Settings.llm = global_llm
-    Settings.embed_model = global_embed
-
     db_path = "./chroma_db"
     chroma_client = chromadb.PersistentClient(path=db_path)
     chroma_collection = chroma_client.get_or_create_collection("raiffeisen_docs")
@@ -69,22 +68,14 @@ def load_rag_engine():
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
             documents, 
-            storage_context=storage_context,
-            embed_model=global_embed,
-            llm=global_llm
+            storage_context=storage_context
         )
     else:
-        index = VectorStoreIndex.from_vector_store(
-            vector_store,
-            embed_model=global_embed,
-            llm=global_llm
-        )
+        index = VectorStoreIndex.from_vector_store(vector_store)
 
-    # Simple query engine with explicitly bound Groq LLM
     return index.as_query_engine(
         llm=global_llm,
-        similarity_top_k=3,
-        response_mode="compact"
+        similarity_top_k=3
     )
 
 query_engine = load_rag_engine()
