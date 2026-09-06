@@ -14,7 +14,7 @@ for resource in ["punkt", "punkt_tab", "stopwords"]:
     except Exception:
         pass
 
-# Multithreading configuration
+# Disable parallel tokenizer warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -44,12 +44,13 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import chromadb
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-# EXPLICITLY DEFINE GROQ ENDPOINT AND MODEL VIA OPENAI-LIKE CONNECTOR
+# Explicitly configure Groq via OpenAILike
 global_llm = OpenAILike(
     model="llama-3.3-70b-versatile",
     api_base="https://api.groq.com/openai/v1",
     api_key=groq_api_key,
-    is_chat_model=True
+    is_chat_model=True,
+    is_function_calling_model=False
 )
 global_embed = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
@@ -68,11 +69,16 @@ def load_rag_engine():
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex.from_documents(
             documents, 
-            storage_context=storage_context
+            storage_context=storage_context,
+            embed_model=global_embed
         )
     else:
-        index = VectorStoreIndex.from_vector_store(vector_store)
+        index = VectorStoreIndex.from_vector_store(
+            vector_store,
+            embed_model=global_embed
+        )
 
+    # Force query engine to use OpenAILike instance
     return index.as_query_engine(
         llm=global_llm,
         similarity_top_k=3
@@ -96,16 +102,24 @@ if user_query := st.chat_input("Ex: Care sunt condițiile generale pentru persoa
 
     with st.chat_message("assistant"):
         with st.spinner("Searching bank documents..."):
-            response = query_engine.query(user_query)
-            st.markdown(str(response))
-            
-            with st.expander("📄 View Source Citations"):
-                for i, node in enumerate(response.source_nodes):
-                    file_name = node.node.metadata.get("file_name", "Document")
-                    page_num = node.node.metadata.get("page_label", "N/A")
-                    score = node.score
-                    snippet = node.node.get_content()[:200].replace("\n", " ")
-                    st.write(f"**[{i+1}] {file_name} (Page {page_num})** — *Match Score: {score:.4f}*")
-                    st.caption(f'"{snippet}..."')
+            try:
+                response = query_engine.query(user_query)
+                st.markdown(str(response))
+                
+                if hasattr(response, "source_nodes") and response.source_nodes:
+                    with st.expander("📄 View Source Citations"):
+                        for i, node in enumerate(response.source_nodes):
+                            file_name = node.node.metadata.get("file_name", "Document")
+                            page_num = node.node.metadata.get("page_label", "N/A")
+                            score = node.score if node.score is not None else 0.0
+                            snippet = node.node.get_content()[:200].replace("\n", " ")
+                            st.write(f"**[{i+1}] {file_name} (Page {page_num})** — *Match Score: {score:.4f}*")
+                            st.caption(f'"{snippet}..."')
 
-    st.session_state.messages.append({"role": "assistant", "content": str(response)})
+                st.session_state.messages.append({"role": "assistant", "content": str(response)})
+
+            except Exception as e:
+                error_msg = f"**Query Execution Failed:** `{type(e).__name__}`: {str(e)}"
+                st.error(error_msg)
+                if hasattr(e, "response") and hasattr(e.response, "text"):
+                    st.code(e.response.text, language="json")
