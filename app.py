@@ -70,7 +70,7 @@ def load_rag_engine():
             vector_store, embed_model=embed_model, llm=llm
         )
     
-    # 4. Explicitly bind Groq LLM to the response synthesizer
+    # 4. Explicitly pass Groq LLM to synthesizer
     response_synthesizer = get_response_synthesizer(
         llm=llm,
         response_mode="compact"
@@ -81,6 +81,7 @@ def load_rag_engine():
         response_synthesizer=response_synthesizer,
         similarity_top_k=3
     )
+
 query_engine = load_rag_engine()
 
 if "messages" not in st.session_state:
