@@ -20,7 +20,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 
 import streamlit as st
 from dotenv import load_dotenv
-from llama_index.core import VectorStoreIndex, Settings, SimpleDirectoryReader, StorageContext
+from llama_index.core import VectorStoreIndex, Settings, SimpleDirectoryReader, StorageContext, get_response_synthesizer
 from llama_index.llms.groq import Groq
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 import chromadb
@@ -41,11 +41,15 @@ st.caption("Ask any question regarding banking conditions, fees, and account pol
 
 @st.cache_resource(show_spinner="Initializing AI Engine and Vector Database...")
 def load_rag_engine():
-    # Instantiate Groq LLM and HuggingFace Embeddings explicitly
-    llm = Groq(model="llama-3.1-8b-instant", api_key=groq_api_key)
+    if not groq_api_key:
+        st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
+        st.stop()
+
+    # Use supported Groq model
+    llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
     embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
     
-    # Set global defaults
+    # Set global LlamaIndex settings
     Settings.llm = llm
     Settings.embed_model = embed_model
     
@@ -66,8 +70,15 @@ def load_rag_engine():
             vector_store, embed_model=embed_model, llm=llm
         )
     
+    # Create synthesizer explicitly to lock LLM to Groq
+    response_synthesizer = get_response_synthesizer(
+        llm=llm,
+        response_mode="compact"
+    )
+
     return index.as_query_engine(
         llm=llm,
+        response_synthesizer=response_synthesizer,
         similarity_top_k=3,
         system_prompt=(
             "You are a helpful, polite customer service assistant for Raiffeisen Bank. "
