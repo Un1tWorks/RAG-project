@@ -43,7 +43,7 @@ if not groq_api_key:
     st.error("Missing GROQ_API_KEY! Please add it to Streamlit Secrets.")
     st.stop()
 
-# FORCE GLOBAL LLM SETTINGS AT MODULE LEVEL TO PREVENT OPENAI FALLBACK
+# FORCE GLOBAL LLM SETTINGS BEFORE ANY INDEX CREATION
 global_llm = Groq(model="llama-3.3-70b-versatile", api_key=groq_api_key)
 global_embed = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
 
@@ -69,9 +69,11 @@ def load_rag_engine():
             vector_store
         )
     
+    # Use tree_summarize or compact without structured answer filtering
     response_synthesizer = get_response_synthesizer(
         llm=global_llm,
-        response_mode="compact"
+        response_mode="compact",
+        structured_answer_filtering=False
     )
 
     return index.as_query_engine(
